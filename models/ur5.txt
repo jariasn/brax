@@ -1,0 +1,788 @@
+bodies {
+  name: "base_link"
+  colliders {
+    position {
+      y: -0.01832
+      z: 0.009
+    }
+    rotation {
+    }
+    box {
+      halfsize {
+        x: 0.073365
+        y: 0.091685
+        z: 0.012
+      }
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 4.0
+}
+bodies {
+  name: "shoulder_link"
+  colliders {
+    position {
+      y: 0.0055
+      z: 0.00166
+    }
+    rotation {
+    }
+    box {
+      halfsize {
+        x: 0.0595
+        y: 0.065
+        z: 0.066855
+      }
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 3.7
+}
+bodies {
+  name: "upper_arm_link"
+  colliders {
+    position {
+      y: 0.00166
+      z: 0.2125
+    }
+    rotation {
+    }
+    box {
+      halfsize {
+        x: 0.0595
+        y: 0.066855
+        z: 0.272
+      }
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 8.393
+}
+bodies {
+  name: "forearm_link"
+  colliders {
+    position {
+      y: -0.00135
+      z: 0.18659
+    }
+    rotation {
+    }
+    box {
+      halfsize {
+        x: 0.058
+        y: 0.05585
+        z: 0.24459
+      }
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 2.275
+}
+bodies {
+  name: "wrist_1_link"
+  colliders {
+    position {
+      y: 0.08993
+      z: -0.00485
+    }
+    rotation {
+    }
+    box {
+      halfsize {
+        x: 0.03875
+        y: 0.042425
+        z: 0.05235
+      }
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 1.219
+}
+bodies {
+  name: "wrist_2_link"
+  colliders {
+    position {
+      y: -0.00485
+      z: 0.09127
+    }
+    rotation {
+    }
+    box {
+      halfsize {
+        x: 0.03875
+        y: 0.05235
+        z: 0.042125
+      }
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 1.219
+}
+bodies {
+  name: "wrist_3_link"
+  colliders {
+    position {
+      y: 0.06457
+      z: 0.00275
+    }
+    rotation {
+    }
+    box {
+      halfsize {
+        x: 0.0375
+        y: 0.01725
+        z: 0.04025
+      }
+    }
+  }
+  colliders {
+    position {
+      x: -0.06239
+      y: 0.0823
+      z: 0.008
+    }
+    rotation {
+      x: -135.0
+      y: -89.9997
+      z: 135.0
+    }
+    capsule {
+      radius: 0.004
+      length: 0.058
+    }
+  }
+  colliders {
+    position {
+      y: 0.0823
+      z: 0.01875
+    }
+    rotation {
+      x: 180.0
+      y: 0.0001520395
+      z: 90.00021
+    }
+    capsule {
+      radius: 0.0375
+      length: 0.10579
+    }
+  }
+  colliders {
+    position {
+      y: 0.0823
+      z: 0.10076
+    }
+    rotation {
+    }
+    box {
+      halfsize {
+        x: 0.01159
+        y: 0.04361
+        z: 0.027595
+      }
+    }
+  }
+  colliders {
+    position {
+      y: 0.0823
+      z: 0.055
+    }
+    rotation {
+    }
+    capsule {
+      radius: 0.03778
+      length: 0.11056
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 0.1
+}
+bodies {
+  name: "left_outer_knuckle"
+  colliders {
+    position {
+      x: 0.0002
+      y: 0.00614
+      z: 0.0022
+    }
+    rotation {
+      x: 138.47087
+      y: -0.000113819624
+      z: 179.9999
+    }
+    box {
+      halfsize {
+        x: 0.012
+        y: 0.010965
+        z: 0.0336
+      }
+    }
+  }
+  colliders {
+    position {
+      x: -0.00022
+      y: 0.05912
+      z: 0.01187
+    }
+    rotation {
+    }
+    box {
+      halfsize {
+        x: 0.013525
+        y: 0.046805
+        z: 0.02004
+      }
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 0.023
+}
+bodies {
+  name: "left_inner_finger"
+  colliders {
+    position {
+      y: 0.04
+      z: -0.027
+    }
+    rotation {
+      x: 89.95438
+    }
+    box {
+      halfsize {
+        x: 0.01
+        y: 0.0025
+        z: 0.025
+      }
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 0.1
+}
+bodies {
+  name: "left_inner_knuckle"
+  colliders {
+    position {
+      x: -5e-05
+      y: 0.04992
+      z: -0.00069
+    }
+    rotation {
+      x: -1.5212029
+    }
+    box {
+      halfsize {
+        x: 0.0195
+        y: 0.051035
+        z: 0.00648
+      }
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 0.027
+}
+bodies {
+  name: "right_inner_knuckle"
+  colliders {
+    position {
+      x: -5e-05
+      y: 0.04983
+      z: -0.00064
+    }
+    rotation {
+      x: -1.3092085
+    }
+    box {
+      halfsize {
+        x: 0.0195
+        y: 0.051825
+        z: 0.00658
+      }
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 0.027
+}
+bodies {
+  name: "right_outer_knuckle"
+  colliders {
+    position {
+      x: -0.0002
+      y: 0.00614
+      z: 0.0022
+    }
+    rotation {
+      x: -41.549755
+    }
+    box {
+      halfsize {
+        x: 0.012
+        y: 0.010965
+        z: 0.0336
+      }
+    }
+  }
+  colliders {
+    position {
+      x: -0.00022
+      y: 0.05912
+      z: 0.01187
+    }
+    rotation {
+    }
+    box {
+      halfsize {
+        x: 0.013525
+        y: 0.046805
+        z: 0.02004
+      }
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 0.023
+}
+bodies {
+  name: "right_inner_finger"
+  colliders {
+    position {
+      y: 0.04
+      z: -0.027
+    }
+    rotation {
+      x: 89.95438
+    }
+    box {
+      halfsize {
+        x: 0.01
+        y: 0.0025
+        z: 0.025
+      }
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 0.1
+}
+bodies {
+  name: "floor"
+  colliders {
+    plane {
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 1.0
+  frozen {
+    all: true
+  }
+}
+joints {
+  name: "shoulder_pan_joint"
+  stiffness: 10000.0
+  parent: "base_link"
+  child: "shoulder_link"
+  parent_offset {
+    z: 0.08916
+  }
+  rotation {
+    y: -90.0
+  }
+  angular_damping: 10.0
+  angle_limit {
+    min: -6.28319
+    max: 6.28319
+  }
+  limit_strength: 300.0
+  spring_damping: 50.0
+  reference_rotation {
+  }
+}
+joints {
+  name: "shoulder_lift_joint"
+  stiffness: 10000.0
+  parent: "shoulder_link"
+  child: "upper_arm_link"
+  parent_offset {
+    y: 0.13585
+  }
+  rotation {
+    z: 90.0
+  }
+  angular_damping: 10.0
+  angle_limit {
+    min: -6.28319
+    max: 6.28319
+  }
+  limit_strength: 300.0
+  spring_damping: 50.0
+  reference_rotation {
+    x: -180.0
+    y: 89.99979
+    z: -180.0
+  }
+}
+joints {
+  name: "elbow_joint"
+  stiffness: 10000.0
+  parent: "upper_arm_link"
+  child: "forearm_link"
+  parent_offset {
+    y: -0.1197
+    z: 0.425
+  }
+  rotation {
+    z: 90.0
+  }
+  angular_damping: 10.0
+  angle_limit {
+    min: -6.28319
+    max: 6.28319
+  }
+  limit_strength: 300.0
+  spring_damping: 50.0
+  reference_rotation {
+  }
+}
+joints {
+  name: "wrist_1_joint"
+  stiffness: 10000.0
+  parent: "forearm_link"
+  child: "wrist_1_link"
+  parent_offset {
+    z: 0.39225
+  }
+  rotation {
+    z: 90.0
+  }
+  angular_damping: 10.0
+  angle_limit {
+    min: -6.28319
+    max: 6.28319
+  }
+  limit_strength: 300.0
+  spring_damping: 50.0
+  reference_rotation {
+    x: -180.0
+    y: 89.99979
+    z: -180.0
+  }
+}
+joints {
+  name: "wrist_2_joint"
+  stiffness: 10000.0
+  parent: "wrist_1_link"
+  child: "wrist_2_link"
+  parent_offset {
+    y: 0.093
+  }
+  rotation {
+    y: -90.0
+  }
+  angular_damping: 10.0
+  angle_limit {
+    min: -6.28319
+    max: 6.28319
+  }
+  limit_strength: 300.0
+  spring_damping: 50.0
+  reference_rotation {
+  }
+}
+joints {
+  name: "wrist_3_joint"
+  stiffness: 10000.0
+  parent: "wrist_2_link"
+  child: "wrist_3_link"
+  parent_offset {
+    z: 0.09465
+  }
+  rotation {
+    z: 90.0
+  }
+  angular_damping: 10.0
+  angle_limit {
+    min: -6.28319
+    max: 6.28319
+  }
+  limit_strength: 300.0
+  spring_damping: 50.0
+  reference_rotation {
+  }
+}
+joints {
+  name: "finger_joint"
+  stiffness: 10000.0
+  parent: "wrist_3_link"
+  child: "left_outer_knuckle"
+  parent_offset {
+    y: -0.0306
+    z: 0.0549
+  }
+  rotation {
+  }
+  angular_damping: 10.0
+  angle_limit {
+    max: 0.775
+  }
+  limit_strength: 300.0
+  spring_damping: 50.0
+  reference_rotation {
+    x: 131.53966
+  }
+}
+joints {
+  name: "left_inner_finger_joint"
+  stiffness: 10000.0
+  parent: "left_outer_knuckle"
+  child: "left_inner_finger"
+  parent_offset {
+    y: 0.08176
+    z: -0.02822
+  }
+  rotation {
+  }
+  angular_damping: 10.0
+  angle_limit {
+    max: 0.8757
+  }
+  limit_strength: 300.0
+  spring_damping: 50.0
+  reference_rotation {
+    x: -41.53944
+  }
+}
+joints {
+  name: "left_inner_knuckle_joint"
+  stiffness: 10000.0
+  parent: "wrist_3_link"
+  child: "left_inner_knuckle"
+  parent_offset {
+    y: -0.0127
+    z: 0.06142
+  }
+  rotation {
+  }
+  angular_damping: 10.0
+  angle_limit {
+    min: -0.8757
+    max: 0.8757
+  }
+  limit_strength: 300.0
+  spring_damping: 50.0
+  reference_rotation {
+    x: 131.53966
+  }
+}
+joints {
+  name: "right_inner_knuckle_joint"
+  stiffness: 10000.0
+  parent: "wrist_3_link"
+  child: "right_inner_knuckle"
+  parent_offset {
+    y: 0.0127
+    z: 0.06142
+  }
+  rotation {
+  }
+  angular_damping: 10.0
+  angle_limit {
+    min: -0.8757
+    max: 0.8757
+  }
+  limit_strength: 300.0
+  spring_damping: 50.0
+  reference_rotation {
+    x: -131.53923
+    y: -0.00010082236
+    z: -179.9999
+  }
+}
+joints {
+  name: "right_outer_knuckle_joint"
+  stiffness: 10000.0
+  parent: "wrist_3_link"
+  child: "right_outer_knuckle"
+  parent_offset {
+    y: 0.0306
+    z: 0.0549
+  }
+  rotation {
+  }
+  angular_damping: 10.0
+  angle_limit {
+    min: -0.775
+    max: 0.775
+  }
+  limit_strength: 300.0
+  spring_damping: 50.0
+  reference_rotation {
+    x: -131.53923
+    y: 0.00010082236
+    z: 179.9999
+  }
+}
+joints {
+  name: "right_inner_finger_joint"
+  stiffness: 10000.0
+  parent: "right_outer_knuckle"
+  child: "right_inner_finger"
+  parent_offset {
+    y: 0.08176
+    z: -0.02822
+  }
+  rotation {
+  }
+  angular_damping: 10.0
+  angle_limit {
+    min: -0.8757
+    max: 0.8757
+  }
+  limit_strength: 300.0
+  spring_damping: 50.0
+  reference_rotation {
+    x: -41.53944
+  }
+}
+actuators {
+  name: "shoulder_pan_joint"
+  joint: "shoulder_pan_joint"
+  strength: 100.0
+  torque {
+  }
+}
+actuators {
+  name: "shoulder_lift_joint"
+  joint: "shoulder_lift_joint"
+  strength: 100.0
+  torque {
+  }
+}
+actuators {
+  name: "elbow_joint"
+  joint: "elbow_joint"
+  strength: 100.0
+  torque {
+  }
+}
+actuators {
+  name: "wrist_1_joint"
+  joint: "wrist_1_joint"
+  strength: 100.0
+  torque {
+  }
+}
+actuators {
+  name: "wrist_2_joint"
+  joint: "wrist_2_joint"
+  strength: 100.0
+  torque {
+  }
+}
+actuators {
+  name: "wrist_3_joint"
+  joint: "wrist_3_joint"
+  strength: 100.0
+  torque {
+  }
+}
+actuators {
+  name: "finger_joint"
+  joint: "finger_joint"
+  strength: 100.0
+  torque {
+  }
+}
+actuators {
+  name: "left_inner_finger_joint"
+  joint: "left_inner_finger_joint"
+  strength: 100.0
+  torque {
+  }
+}
+actuators {
+  name: "left_inner_knuckle_joint"
+  joint: "left_inner_knuckle_joint"
+  strength: 100.0
+  torque {
+  }
+}
+actuators {
+  name: "right_inner_knuckle_joint"
+  joint: "right_inner_knuckle_joint"
+  strength: 100.0
+  torque {
+  }
+}
+actuators {
+  name: "right_outer_knuckle_joint"
+  joint: "right_outer_knuckle_joint"
+  strength: 100.0
+  torque {
+  }
+}
+actuators {
+  name: "right_inner_finger_joint"
+  joint: "right_inner_finger_joint"
+  strength: 100.0
+  torque {
+  }
+}
+friction: 0.6
+angular_damping: -0.05
+baumgarte_erp: 0.1
+collide_include {
+}
+dt: 0.02
+substeps: 4
