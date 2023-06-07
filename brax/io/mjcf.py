@@ -368,10 +368,10 @@ def load_model(mj: mujoco.MjModel) -> System:
       geom_groups.setdefault(key_fn(geom, mask), []).append(geom)
     elif typ == 5:  # Cylinder
       radius, halflength = mj.geom_size[i, 0:2]
-      if halflength > 0.001 and mask > 0:
+      #if halflength > 0.001 and mask > 0:
         # TODO: support cylinders with depth.
-        raise NotImplementedError(
-            'Cylinders of half-length>0.001 are not supported for collision.')
+        #raise NotImplementedError(
+            #'Cylinders of half-length>0.001 are not supported for collision.')
       geom = Cylinder(radius=radius, length=halflength * 2, **kwargs)
       geom_groups.setdefault(key_fn(geom, mask), []).append(geom)
     elif typ == 2:  # Sphere
