@@ -1,14 +1,28 @@
 # Copyright 2023 The Brax Authors.
 #
-#This is just a copy of the humanoid.py file
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-from brax import actuator
+# pylint:disable=g-multiple-import
+"""Trains a robot arm to pick up a can"""
+
 from brax import base
+from brax import math
 from brax.envs.base import PipelineEnv, State
 from brax.io import mjcf
 from etils import epath
 import jax
 from jax import numpy as jp
+import xml.etree.ElementTree as ET
 
 
 class UR5(PipelineEnv):
@@ -19,309 +33,207 @@ class UR5(PipelineEnv):
   """
   ### Description
 
-  This environment is based on the environment introduced by Tassa, Erez and
-  Todorov in
-  ["Synthesis and stabilization of complex behaviors through online trajectory optimization"](https://ieeexplore.ieee.org/document/6386025).
+  "Pusher" is a multi-jointed robot arm which is very similar to that of a
+  human.
 
-  The 3D bipedal robot is designed to simulate a human. It has a torso (abdomen)
-  with a pair of legs and arms. The legs each consist of two links, and so the
-  arms (representing the knees and elbows respectively). The goal of the
-  environment is to walk forward as fast as possible without falling over.
+  The goal is to pick up a target cylinder (called *object*)
+  using the robot's end effector (called *fingertip*). The robot consists of
+  shoulder, elbow, forearm, and wrist joints.
 
   ### Action Space
 
-  The agent take a 17-element vector for actions. The action space is a
-  continuous `(action, ...)` all in `[-1, 1]`, where `action` represents the
-  numerical torques applied at the hinge joints.
+  The action space is a `Box(-2, 2, (7,), float32)`. An action `(a, b)`
+  represents the torques applied at the hinge joints.
 
-  | Num | Action                                                                             | Control Min | Control Max | Name (in corresponding config)   | Joint | Unit         |
-  |-----|------------------------------------------------------------------------------------|-------------|-------------|----------------------------------|-------|--------------|
-  | 0   | Torque applied on the hinge in the y-coordinate of the abdomen                     | -1.0        | 1.0         | abdomen_yz                       | hinge | torque (N m) |
-  | 1   | Torque applied on the hinge in the z-coordinate of the abdomen                     | -1.0        | 1.0         | abdomen_yz                       | hinge | torque (N m) |
-  | 2   | Torque applied on the hinge in the x-coordinate of the abdomen                     | -1.0        | 1.0         | abdomen_x                        | hinge | torque (N m) |
-  | 3   | Torque applied on the rotor between torso/abdomen and the right hip (x-coordinate) | -1.0        | 1.0         | right_hip_xyz (right_thigh)      | hinge | torque (N m) |
-  | 4   | Torque applied on the rotor between torso/abdomen and the right hip (y-coordinate) | -1.0        | 1.0         | right_hip_xyz (right_thigh)      | hinge | torque (N m) |
-  | 5   | Torque applied on the rotor between torso/abdomen and the right hip (z-coordinate) | -1.0        | 1.0         | right_hip_xyz (right_thigh)      | hinge | torque (N m) |
-  | 6   | Torque applied on the rotor between the right hip/thigh and the right shin         | -1.0        | 1.0         | right_knee                       | hinge | torque (N m) |
-  | 7   | Torque applied on the rotor between torso/abdomen and the left hip (x-coordinate)  | -1.0        | 1.0         | left_hip_xyz (left_thigh)        | hinge | torque (N m) |
-  | 8   | Torque applied on the rotor between torso/abdomen and the left hip (y-coordinate)  | -1.0        | 1.0         | left_hip_xyz (left_thigh)        | hinge | torque (N m) |
-  | 9   | Torque applied on the rotor between torso/abdomen and the left hip (z-coordinate)  | -1.0        | 1.0         | left_hip_xyz (left_thigh)        | hinge | torque (N m) |
-  | 10  | Torque applied on the rotor between the left hip/thigh and the left shin           | -1.0        | 1.0         | left_knee                        | hinge | torque (N m) |
-  | 11  | Torque applied on the rotor between the torso and right upper arm (coordinate -1)  | -1.0        | 1.0         | right_shoulder12                 | hinge | torque (N m) |
-  | 12  | Torque applied on the rotor between the torso and right upper arm (coordinate -2)  | -1.0        | 1.0         | right_shoulder12                 | hinge | torque (N m) |
-  | 13  | Torque applied on the rotor between the right upper arm and right lower arm        | -1.0        | 1.0         | right_elbow                      | hinge | torque (N m) |
-  | 14  | Torque applied on the rotor between the torso and left upper arm (coordinate -1)   | -1.0        | 1.0         | left_shoulder12                  | hinge | torque (N m) |
-  | 15  | Torque applied on the rotor between the torso and left upper arm (coordinate -2)   | -1.0        | 1.0         | left_shoulder12                  | hinge | torque (N m) |
-  | 16  | Torque applied on the rotor between the left upper arm and left lower arm          | -1.0        | 1.0         | left_elbow                       | hinge | torque (N m) |
+  | Num | Action                                        | Control Min | Control Max | Name (in corresponding config) | Joint | Unit         |
+  |-----|-----------------------------------------------|-------------|-------------|--------------------------------|-------|--------------|
+  | 0   | Rotation of the panning the shoulder          | -1          | 1           | shoulder_pan_joint             | hinge | torque (N m) |
+  | 1   | Rotation of the shoulder lifting joint        | -1          | 1           | shoulder_lift_joint            | hinge | torque (N m) |
+  | 2   | Rotation of the elbow joint                   | -1          | 1           | elbow_joint                    | hinge | torque (N m) |
+  | 3   | Rotation of wrist joint 1                     | -1          | 1           | wrist_1_joint                  | hinge | torque (N m) |
+  | 4   | Rotation of wrist joint 2                     | -1          | 1           | wrist_2_joint                  | hinge | torque (N m) |
+  | 5   | Rotation of wrist joint 3                     | -1          | 1           | wrist_2_joint                  | hinge | torque (N m) |
+  | 6   | Opening of the fingers                        | -1          | 1           | finger_joint                   | hinge | torque (N m) |
 
   ### Observation Space
 
-  The state space consists of positional values of different body parts of the
-  Humanoid, followed by the velocities of those individual parts (their
-  derivatives) with all the positions ordered before all the velocities.
+  Observations consist of
 
-  The observation is a `ndarray` with shape `(376,)` where the elements correspond to the following:
+  - Angle of rotational joints on the pusher
+  - Angular velocities of rotational joints on the pusher
+  - The coordinates of the fingertip of the pusher
+  - The coordinates of the object to be picked
+  - The coordinates of the goal position
 
-  | Num | Observation                                                                                                     | Min  | Max | Name (in corresponding config)   | Joint | Unit                     |
-  |-----|-----------------------------------------------------------------------------------------------------------------|------|-----|----------------------------------|-------|--------------------------|
-  | 0   | z-coordinate of the torso (centre)                                                                              | -Inf | Inf | root                             | free  | position (m)             |
-  | 1   | w-orientation of the torso (centre)                                                                             | -Inf | Inf | root                             | free  | angle (rad)              |
-  | 2   | x-orientation of the torso (centre)                                                                             | -Inf | Inf | root                             | free  | angle (rad)              |
-  | 3   | y-orientation of the torso (centre)                                                                             | -Inf | Inf | root                             | free  | angle (rad)              |
-  | 4   | z-orientation of the torso (centre)                                                                             | -Inf | Inf | root                             | free  | angle (rad)              |
-  | 5   | z-angle of the abdomen (in lower_waist)                                                                         | -Inf | Inf | abdomen_yz                       | hinge | angle (rad)              |
-  | 6   | y-angle of the abdomen (in lower_waist)                                                                         | -Inf | Inf | abdomen_yy                       | hinge | angle (rad)              |
-  | 7   | x-angle of the abdomen (in pelvis)                                                                              | -Inf | Inf | abdomen_x                        | hinge | angle (rad)              |
-  | 8   | x-coordinate of angle between pelvis and right hip (in right_thigh)                                             | -Inf | Inf | right_hip_xyz                    | hinge | angle (rad)              |
-  | 9   | y-coordinate of angle between pelvis and right hip (in right_thigh)                                             | -Inf | Inf | right_hip_xyz                    | hinge | angle (rad)              |
-  | 10  | z-coordinate of angle between pelvis and right hip (in right_thigh)                                             | -Inf | Inf | right_hip_xyz                    | hinge | angle (rad)              |
-  | 11  | angle between right hip and the right shin (in right_knee)                                                      | -Inf | Inf | right_knee                       | hinge | angle (rad)              |
-  | 12  | x-coordinate of angle between pelvis and left hip (in left_thigh)                                               | -Inf | Inf | left_hip_xyz                     | hinge | angle (rad)              |
-  | 13  | y-coordinate of angle between pelvis and left hip (in left_thigh)                                               | -Inf | Inf | left_hip_xyz                     | hinge | angle (rad)              |
-  | 14  | z-coordinate of angle between pelvis and left hip (in left_thigh)                                               | -Inf | Inf | left_hip_xyz                     | hinge | angle (rad)              |
-  | 15  | angle between left hip and the left shin (in left_knee)                                                         | -Inf | Inf | left_knee                        | hinge | angle (rad)              |
-  | 16  | coordinate-1 (multi-axis) angle between torso and right arm (in right_upper_arm)                                | -Inf | Inf | right_shoulder12                 | hinge | angle (rad)              |
-  | 17  | coordinate-2 (multi-axis) angle between torso and right arm (in right_upper_arm)                                | -Inf | Inf | right_shoulder12                 | hinge | angle (rad)              |
-  | 18  | angle between right upper arm and right_lower_arm                                                               | -Inf | Inf | right_elbow                      | hinge | angle (rad)              |
-  | 19  | coordinate-1 (multi-axis) angle between torso and left arm (in left_upper_arm)                                  | -Inf | Inf | left_shoulder12                  | hinge | angle (rad)              |
-  | 20  | coordinate-2 (multi-axis) angle between torso and left arm (in left_upper_arm)                                  | -Inf | Inf | left_shoulder12                  | hinge | angle (rad)              |
-  | 21  | angle between left upper arm and left_lower_arm                                                                 | -Inf | Inf | left_elbow                       | hinge | angle (rad)              |
-  | 22  | x-coordinate velocity of the torso (centre)                                                                     | -Inf | Inf | root                             | free  | velocity (m/s)           |
-  | 23  | y-coordinate velocity of the torso (centre)                                                                     | -Inf | Inf | root                             | free  | velocity (m/s)           |
-  | 24  | z-coordinate velocity of the torso (centre)                                                                     | -Inf | Inf | root                             | free  | velocity (m/s)           |
-  | 25  | x-coordinate angular velocity of the torso (centre)                                                             | -Inf | Inf | root                             | free  | angular velocity (rad/s) |
-  | 26  | y-coordinate angular velocity of the torso (centre)                                                             | -Inf | Inf | root                             | free  | angular velocity (rad/s) |
-  | 27  | z-coordinate angular velocity of the torso (centre)                                                             | -Inf | Inf | root                             | free  | angular velocity (rad/s) |
-  | 28  | z-coordinate of angular velocity of the abdomen (in lower_waist)                                                | -Inf | Inf | abdomen_z                        | hinge | angular velocity (rad/s) |
-  | 29  | y-coordinate of angular velocity of the abdomen (in lower_waist)                                                | -Inf | Inf | abdomen_y                        | hinge | angular velocity (rad/s) |
-  | 30  | x-coordinate of angular velocity of the abdomen (in pelvis)                                                     | -Inf | Inf | abdomen_x                        | hinge | angular velocity (rad/s) |
-  | 31  | x-coordinate of the angular velocity of the angle between pelvis and right hip (in right_thigh)                 | -Inf | Inf | right_hip_xyz                    | hinge | angular velocity (rad/s) |
-  | 32  | y-coordinate of the angular velocity of the angle between pelvis and right hip (in right_thigh)                 | -Inf | Inf | right_hip_z                      | hinge | angular velocity (rad/s) |
-  | 33  | z-coordinate of the angular velocity of the angle between pelvis and right hip (in right_thigh)                 | -Inf | Inf | right_hip_y                      | hinge | angular velocity (rad/s) |
-  | 34  | angular velocity of the angle between right hip and the right shin (in right_knee)                              | -Inf | Inf | right_knee                       | hinge | angular velocity (rad/s) |
-  | 35  | x-coordinate of the angular velocity of the angle between pelvis and left hip (in left_thigh)                   | -Inf | Inf | left_hip_xyz                     | hinge | angular velocity (rad/s) |
-  | 36  | y-coordinate of the angular velocity of the angle between pelvis and left hip (in left_thigh)                   | -Inf | Inf | left_hip_z                       | hinge | angular velocity (rad/s) |
-  | 37  | z-coordinate of the angular velocity of the angle between pelvis and left hip (in left_thigh)                   | -Inf | Inf | left_hip_y                       | hinge | angular velocity (rad/s) |
-  | 38  | angular velocity of the angle between left hip and the left shin (in left_knee)                                 | -Inf | Inf | left_knee                        | hinge | angular velocity (rad/s) |
-  | 39  | coordinate-1 (multi-axis) of the angular velocity of the angle between torso and right arm (in right_upper_arm) | -Inf | Inf | right_shoulder12                 | hinge | angular velocity (rad/s) |
-  | 40  | coordinate-2 (multi-axis) of the angular velocity of the angle between torso and right arm (in right_upper_arm) | -Inf | Inf | right_shoulder12                 | hinge | angular velocity (rad/s) |
-  | 41  | angular velocity of the angle between right upper arm and right_lower_arm                                       | -Inf | Inf | right_elbow                      | hinge | angular velocity (rad/s) |
-  | 42  | coordinate-1 (multi-axis) of the angular velocity of the angle between torso and left arm (in left_upper_arm)   | -Inf | Inf | left_shoulder12                  | hinge | angular velocity (rad/s) |
-  | 43  | coordinate-2 (multi-axis) of the angular velocity of the angle between torso and left arm (in left_upper_arm)   | -Inf | Inf | left_shoulder12                  | hinge | angular velocity (rad/s) |
-  | 44  | angular velocity of the angle between left upper arm and left_lower_arm                                         | -Inf | Inf | left_elbow                       | hinge | angular velocity (rad/s) |
+  The observation is a `ndarray` with shape `(23,)` where the elements
+  correspond to the table below. An analogy can be drawn to a human arm in order
+  to help understand the state space, with the words flex and roll meaning the
+  same as human joints.
 
-  Additionally, after all the positional and velocity based values in the table,
-  the state_space consists of (in order):
+  | Num | Observation                                              | Min  | Max | Name (in corresponding config) | Joint    | Unit                     |
+  |-----|----------------------------------------------------------|------|-----|--------------------------------|----------|--------------------------|
+  | 0   | Rotation of the panning the shoulder                     | -Inf | Inf | shoulder_pan_joint             | hinge    | angle (rad)              |
+  | 1   | Rotation of the shoulder lifting joint                   | -Inf | Inf | shoulder_lift_joint            | hinge    | angle (rad)              |
+  | 2   | Rotation of the shoulder rolling joint                   | -Inf | Inf | elbow_joint                    | hinge    | angle (rad)              |
+  | 3   | Rotation of hinge joint that flexed the elbow            | -Inf | Inf | wrist_1_joint                  | hinge    | angle (rad)              |
+  | 4   | Rotation of hinge that rolls the forearm                 | -Inf | Inf | wrist_2_joint                  | hinge    | angle (rad)              |
+  | 5   | Rotation of flexing the wrist                            | -Inf | Inf | wrist_3_joint                  | hinge    | angle (rad)              |
+  | 7   | Rotational velocity of the panning the shoulder          | -Inf | Inf | shoulder_pan_joint             | hinge    | angular velocity (rad/s) |
+  | 8   | Rotational velocity of the shoulder lifting joint        | -Inf | Inf | shoulder_lift_joint            | hinge    | angular velocity (rad/s) |
+  | 9   | Rotational velocity of the shoulder rolling joint        | -Inf | Inf | elbow_joint                    | hinge    | angular velocity (rad/s) |
+  | 10  | Rotational velocity of hinge joint that flexed the elbow | -Inf | Inf | wrist_1_joint                  | hinge    | angular velocity (rad/s) |
+  | 11  | Rotational velocity of hinge that rolls the forearm      | -Inf | Inf | wrist_2_joint                  | hinge    | angular velocity (rad/s) |
+  | 12  | Rotational velocity of flexing the wrist                 | -Inf | Inf | wrist_3_joint                  | hinge    | angular velocity (rad/s) |
+  | 14  | x-coordinate of the fingertip of the gripper             | -Inf | Inf | tips_arm                       | slide    | position (m)             |
+  | 15  | y-coordinate of the fingertip of the gripper             | -Inf | Inf | tips_arm                       | slide    | position (m)             |
+  | 16  | z-coordinate of the fingertip of the gripper             | -Inf | Inf | tips_arm                       | slide    | position (m)             |
+  | 17  | x-coordinate of the object to be moved                   | -Inf | Inf | object (obj_slidex)            | slide    | position (m)             |
+  | 18  | y-coordinate of the object to be moved                   | -Inf | Inf | object (obj_slidey)            | slide    | position (m)             |
+  | 19  | z-coordinate of the object to be moved                   | -Inf | Inf | object                         | cylinder | position (m)             |
+  | 20  | x-coordinate of the goal position of the object          | -Inf | Inf | goal (goal_slidex)             | slide    | position (m)             |
+  | 21  | y-coordinate of the goal position of the object          | -Inf | Inf | goal (goal_slidey)             | slide    | position (m)             |
+  | 22  | z-coordinate of the goal position of the object          | -Inf | Inf | goal                           | sphere   | position (m)             |
 
-  - *cinert:* Mass and inertia of a single rigid body relative to the center of
-    mass (this is an intermediate result of transition). It has shape 14*10
-    (*nbody * 10*) and hence adds to another 140 elements in the state space.
-  - *cvel:* Center of mass based velocity. It has shape 14 * 6 (*nbody * 6*) and
-    hence adds another 84 elements in the state space
-  - *qfrc_actuator:* Constraint force generated as the actuator force. This has
-    shape `(23,)`  *(nv * 1)* and hence adds another 23 elements to the state
-    space.
-
-  The (x,y,z) coordinates are translational DOFs while the orientations are
-  rotational DOFs expressed as quaternions.
 
   ### Rewards
 
-  The reward consists of three parts:
+  The reward consists of two parts:
 
-  - *reward_alive*: Every timestep that the humanoid is alive, it gets a reward
-    of 5.
-  - *forward_reward*: A reward of walking forward which is measured as *1.25 *
-    (average center of mass before action - average center of mass after
-    action) / dt*. *dt* is the time between actions - the default *dt = 0.015*.
-    This reward would be positive if the humanoid walks forward (right) desired.
-    The calculation for the center of mass is defined in the `.py` file for the
-    Humanoid.
-  - *reward_quadctrl*: A negative reward for penalising the humanoid if it has
-    too large of a control force. If there are *nu* actuators/controls, then the
-    control has shape  `nu x 1`. It is measured as *0.1 **x**
-    sum(control<sup>2</sup>)*.
+  - *reward_near*: This reward is a measure of how far the *fingertip* of the
+  pusher (the unattached end) is from the object, with a more negative value
+  assigned for when the pusher's *fingertip* is further away from the target.
+  It is calculated as the negative vector norm of (position of the fingertip -
+  position of target), or *-norm("fingertip" - "target")*.
+  - *reward_dist*: This reward is a measure of how far the object is from the
+  target goal position, with a more negative value assigned for object is
+  further away from the target. It is calculated as the negative vector norm of
+  (position of the object - position of goal), or *-norm("object" - "target")*.
+  - *reward_control*: A negative reward for penalising the pusher if it takes
+  actions that are too large. It is measured as the negative squared Euclidean
+  norm of the action, i.e. as *- sum(action<sup>2</sup>)*.
+
+  Unlike other environments, Pusher does not allow you to specify weights for
+  the individual reward terms. However, `info` does contain the keys
+  *reward_dist* and *reward_ctrl*. Thus, if you'd like to weight the terms, you
+  should create a wrapper that computes the weighted reward from `info`.
 
   ### Starting State
 
-  All observations start in state (0.0, 0.0,  1.4, 1.0, 0.0  ... 0.0) with a
-  uniform noise in the range of [-0.01, 0.01] added to the positional and
-  velocity values (values in the table) for stochasticity. Note that the initial
-  z coordinate is intentionally selected to be high, thereby indicating a
-  standing up humanoid. The initial orientation is designed to make it face
-  forward as well.
+  All pusher (not including object and goal) states start in (0.0, 0.0, 0.0,
+  0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0). A uniform noise in the
+  range [-0.005, 0.005] is added to the velocity attributes only. The velocities
+  of the object and goal are permanently set to 0. The object's x-position is
+  selected uniformly between [-0.3, 0] while the y-position is selected
+  uniformly between [-0.2, 0.2], and this process is repeated until the vector
+  norm between the object's (x,y) position and origin is not greater than 0.17.
+  The goal always have the same position of (0.45, -0.05, -0.323).
+
+  The default *dt = 0.05*.
 
   ### Episode Termination
 
   The episode terminates when any of the following happens:
 
-  1. The episode duration reaches a 1000 timesteps
-  2. The z-coordinate of the torso (index 0 in state space OR index 2 in the
-  table) is **not** in the range `[0.8, 2.1]` (the humanoid has fallen or is
-  about to fall beyond recovery).
+  1. The episode duration reaches a 1000 timesteps.
   """
   # pyformat: enable
 
-
-  def __init__(
-      self,
-      forward_reward_weight=1.25,
-      ctrl_cost_weight=0.1,
-      healthy_reward=5.0,
-      terminate_when_unhealthy=True,
-      healthy_z_range=(1.0, 2.0),
-      reset_noise_scale=1e-2,
-      exclude_current_positions_from_observation=True,
-      backend='generalized',
-      **kwargs,
-  ):
-    path = 'path_to_urdf_file' #replace the path
+  def __init__(self, backend='generalized', **kwargs):
+    path = epath.resource_path('brax') / 'envs/assets/ur5.urdf'
     sys = mjcf.load(path)
 
     n_frames = 5
+    def get_all_link_names(urdf_file):
+      tree = ET.parse(urdf_file)
+      root = tree.getroot()
+
+      link_names = []
+      for link in root.iter('link'):
+        link_name = link.attrib.get('name')
+        if link_name:
+          link_names.append(link_name)
+      return link_names
 
     if backend in ['spring', 'positional']:
-      sys = sys.replace(dt=0.0015)
-      n_frames = 10
-      gear = jp.array([
-          350.0, 350.0, 350.0, 350.0, 350.0, 350.0, 350.0, 350.0, 350.0, 350.0,
-          350.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0])  # pyformat: disable
-      sys = sys.replace(actuator=sys.actuator.replace(gear=gear))
+      sys = sys.replace(dt=0.001)
+      sys = sys.replace(
+          actuator=sys.actuator.replace(gear=jp.array([20.0] * sys.act_size()))
+      )
+      n_frames = 50
 
     kwargs['n_frames'] = kwargs.get('n_frames', n_frames)
 
     super().__init__(sys=sys, backend=backend, **kwargs)
 
-    self._forward_reward_weight = forward_reward_weight
-    self._ctrl_cost_weight = ctrl_cost_weight
-    self._healthy_reward = healthy_reward
-    self._terminate_when_unhealthy = terminate_when_unhealthy
-    self._healthy_z_range = healthy_z_range
-    self._reset_noise_scale = reset_noise_scale
-    self._exclude_current_positions_from_observation = (
-        exclude_current_positions_from_observation
-    )
+    # The tips_arm body gets fused with r_wrist_roll_link, so we use the parent
+    # r_wrist_flex_link for tips_arm_idx.
+    print("link names:", self.sys.link_names)
+    self._tips_arm_idx = get_all_link_names(path).index('robotiq_arg2f_base_link')
+    self._object_idx = get_all_link_names(path).index('object')
+    self._goal_idx = get_all_link_names(path).index('goal')
+    
 
   def reset(self, rng: jp.ndarray) -> State:
-    """Resets the environment to an initial state."""
+    qpos = self.sys.init_q
+
     rng, rng1, rng2 = jax.random.split(rng, 3)
 
-    low, hi = -self._reset_noise_scale, self._reset_noise_scale
-    qpos = self.sys.init_q + jax.random.uniform(
-        rng1, (self.sys.q_size(),), minval=low, maxval=hi
-    )
+    # randomly orient the object
+    cylinder_pos = jp.concatenate([
+        jax.random.uniform(rng, (1,), minval=-0.3, maxval=-1e-6),
+        jax.random.uniform(rng1, (1,), minval=-0.2, maxval=0.2),
+    ])
+    # constrain minimum distance of object to goal
+    goal_pos = jp.array([0.0, 0.0])
+    norm = math.safe_norm(cylinder_pos - goal_pos)
+    scale = jp.where(norm < 0.17, 0.17 / norm, 1.0)
+    cylinder_pos *= scale
+    qpos = qpos.at[-4:].set(jp.concatenate([cylinder_pos, goal_pos]))
+
     qvel = jax.random.uniform(
-        rng2, (self.sys.qd_size(),), minval=low, maxval=hi
+        rng2, (self.sys.qd_size(),), minval=-0.005, maxval=0.005
     )
+    qvel = qvel.at[-4:].set(0.0)
 
     pipeline_state = self.pipeline_init(qpos, qvel)
 
-    obs = self._get_obs(pipeline_state, jp.zeros(self.sys.act_size()))
+    obs = self._get_obs(pipeline_state)
     reward, done, zero = jp.zeros(3)
-    metrics = {
-        'forward_reward': zero,
-        'reward_linvel': zero,
-        'reward_quadctrl': zero,
-        'reward_alive': zero,
-        'x_position': zero,
-        'y_position': zero,
-        'distance_from_origin': zero,
-        'x_velocity': zero,
-        'y_velocity': zero,
-    }
+    metrics = {'reward_dist': zero, 'reward_ctrl': zero, 'reward_near': zero}
     return State(pipeline_state, obs, reward, done, metrics)
 
   def step(self, state: State, action: jp.ndarray) -> State:
-    """Runs one timestep of the environment's dynamics."""
-    pipeline_state0 = state.pipeline_state
-    pipeline_state = self.pipeline_step(pipeline_state0, action)
-
-    com_before, *_ = self._com(pipeline_state0)
-    com_after, *_ = self._com(pipeline_state)
-    velocity = (com_after - com_before) / self.dt
-    forward_reward = self._forward_reward_weight * velocity[0]
-
-    min_z, max_z = self._healthy_z_range
-    is_healthy = jp.where(pipeline_state.x.pos[0, 2] < min_z, x=0.0, y=1.0)
-    is_healthy = jp.where(
-        pipeline_state.x.pos[0, 2] > max_z, x=0.0, y=is_healthy
+    x_i = state.pipeline_state.x.vmap().do(
+        base.Transform.create(pos=self.sys.link.inertia.transform.pos)
     )
-    if self._terminate_when_unhealthy:
-      healthy_reward = self._healthy_reward
-    else:
-      healthy_reward = self._healthy_reward * is_healthy
+    vec_1 = x_i.pos[self._object_idx] - x_i.pos[self._tips_arm_idx]
+    vec_2 = x_i.pos[self._object_idx] - x_i.pos[self._goal_idx]
 
-    ctrl_cost = self._ctrl_cost_weight * jp.sum(jp.square(action))
+    reward_near = -math.safe_norm(vec_1)
+    reward_dist = -math.safe_norm(vec_2)
+    reward_ctrl = -jp.square(action).sum()
+    reward = reward_dist + 0.1 * reward_ctrl + 0.5 * reward_near
 
-    obs = self._get_obs(pipeline_state, action)
-    reward = forward_reward + healthy_reward - ctrl_cost
-    done = 1.0 - is_healthy if self._terminate_when_unhealthy else 0.0
+    pipeline_state = self.pipeline_step(state.pipeline_state, action)
+
+    obs = self._get_obs(pipeline_state)
     state.metrics.update(
-        forward_reward=forward_reward,
-        reward_linvel=forward_reward,
-        reward_quadctrl=-ctrl_cost,
-        reward_alive=healthy_reward,
-        x_position=com_after[0],
-        y_position=com_after[1],
-        distance_from_origin=jp.linalg.norm(com_after),
-        x_velocity=velocity[0],
-        y_velocity=velocity[1],
+        reward_near=reward_near,
+        reward_dist=reward_dist,
+        reward_ctrl=reward_ctrl,
     )
+    return state.replace(pipeline_state=pipeline_state, obs=obs, reward=reward)
 
-    return state.replace(
-        pipeline_state=pipeline_state, obs=obs, reward=reward, done=done
+  def _get_obs(self, pipeline_state: base.State) -> jp.ndarray:
+    """Observes pusher body position and velocities."""
+    x_i = pipeline_state.x.vmap().do(
+        base.Transform.create(pos=self.sys.link.inertia.transform.pos)
     )
-
-  def _get_obs(
-      self, pipeline_state: base.State, action: jp.ndarray
-  ) -> jp.ndarray:
-    """Observes humanoid body position, velocities, and angles."""
-    position = pipeline_state.q
-    velocity = pipeline_state.qd
-
-    if self._exclude_current_positions_from_observation:
-      position = position[2:]
-
-    com, inertia, mass_sum, x_i = self._com(pipeline_state)
-    cinr = x_i.replace(pos=x_i.pos - com).vmap().do(inertia)
-    com_inertia = jp.hstack(
-        [cinr.i.reshape((cinr.i.shape[0], -1)), inertia.mass[:, None]]
-    )
-
-    xd_i = (
-        base.Transform.create(pos=x_i.pos - pipeline_state.x.pos)
-        .vmap()
-        .do(pipeline_state.xd)
-    )
-    com_vel = inertia.mass[:, None] * xd_i.vel / mass_sum
-    com_ang = xd_i.ang
-    com_velocity = jp.hstack([com_vel, com_ang])
-
-    qfrc_actuator = actuator.to_tau(
-        self.sys, action, pipeline_state.q, pipeline_state.qd)
-
-    # external_contact_forces are excluded
     return jp.concatenate([
-        position,
-        velocity,
-        com_inertia.ravel(),
-        com_velocity.ravel(),
-        qfrc_actuator,
+        pipeline_state.q[:7],
+        pipeline_state.qd[:7],
+        x_i.pos[self._tips_arm_idx],
+        x_i.pos[self._object_idx],
+        x_i.pos[self._goal_idx],
     ])
 
-  def _com(self, pipeline_state: base.State) -> jp.ndarray:
-    inertia = self.sys.link.inertia
-    if self.backend in ['spring', 'positional']:
-      inertia = inertia.replace(
-          i=jax.vmap(jp.diag)(
-              jax.vmap(jp.diagonal)(inertia.i)
-              ** (1 - self.sys.spring_inertia_scale)
-          ),
-          mass=inertia.mass ** (1 - self.sys.spring_mass_scale),
-      )
-    mass_sum = jp.sum(inertia.mass)
-    x_i = pipeline_state.x.vmap().do(inertia.transform)
-    com = (
-        jp.sum(jax.vmap(jp.multiply)(inertia.mass, x_i.pos), axis=0) / mass_sum
-    )
-    return com, inertia, mass_sum, x_i  # pytype: disable=bad-return-type  # jax-ndarray
