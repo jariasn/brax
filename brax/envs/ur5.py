@@ -1,4 +1,4 @@
-# Copyright 2023 The Brax Authors.
+# Copyright 2021 The Brax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,228 +12,440 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# pylint:disable=g-multiple-import
-"""Trains a robot arm to pick up a can"""
+"""Trains a ur5e robot arm to move its end effector to a sequence of targets.
 
-from brax import base
-from brax import math
-from brax.envs.base import PipelineEnv, State
-from brax.io import mjcf
-from etils import epath
+The 6 joints have been placed faithfully to the actual joint locations of the
+ur5e robot arm model.  Because brax does not yet support meshes, the capsule
+locations for collider boundaries are only approximate.
+
+See https://www.universal-robots.com/products/ur5-robot/ for more details.
+"""
+
+from typing import Tuple
+
+import brax
+from brax.envs import env
+from brax.physics import math
 import jax
-from jax import numpy as jp
-import xml.etree.ElementTree as ET
+import jax.numpy as jnp
 
 
-class UR5(PipelineEnv):
+class Ur5e(env.Env):
+  """Trains a UR5E robotic arm to touch a sequence of random targets."""
 
+  def __init__(self, **kwargs):
+    super().__init__(_SYSTEM_CONFIG, **kwargs)
+    self.target_idx = self.sys.body.index['Target']
+    self.torso_idx = self.sys.body.index['wrist_3_link']
+    self.target_radius = .02
+    self.target_distance = .5
 
+  def reset(self, rng: jnp.ndarray) -> env.State:
+    qp = self.sys.default_qp()
+    rng, target = self._random_target(rng)
+    pos = jax.ops.index_update(qp.pos, jax.ops.index[self.target_idx], target)
+    qp = qp.replace(pos=pos)
+    info = self.sys.info(qp)
+    obs = self._get_obs(qp, info)
+    reward, done, zero = jnp.zeros(3)
+    metrics = {
+        'hits': zero,
+        'weightedHits': zero,
+        'movingToTarget': zero,
+    }
+    info = {'rng': rng}
+    return env.State(qp, obs, reward, done, metrics, info)
 
-  # pyformat: disable
-  """
-  ### Description
+  def step(self, state: env.State, action: jnp.ndarray) -> env.State:
+    qp, info = self.sys.step(state.qp, action)
+    obs = self._get_obs(qp, info)
 
-  "Pusher" is a multi-jointed robot arm which is very similar to that of a
-  human.
+    # small reward for end effector moving towards target
+    torso_delta = qp.pos[self.torso_idx] - state.qp.pos[self.torso_idx]
+    target_rel = qp.pos[self.target_idx] - qp.pos[self.torso_idx]
+    target_dist = jnp.linalg.norm(target_rel)
+    target_dir = target_rel / (1e-6 + target_dist)
+    moving_to_target = .1 * jnp.dot(torso_delta, target_dir)
 
-  The goal is to pick up a target cylinder (called *object*)
-  using the robot's end effector (called *fingertip*). The robot consists of
-  shoulder, elbow, forearm, and wrist joints.
+    # big reward for reaching target
+    target_hit = jnp.where(target_dist < self.target_radius, 1.0, 0.0)
+    weighted_hit = target_hit
 
-  ### Action Space
+    reward = moving_to_target + weighted_hit
 
-  The action space is a `Box(-2, 2, (7,), float32)`. An action `(a, b)`
-  represents the torques applied at the hinge joints.
-
-  | Num | Action                                        | Control Min | Control Max | Name (in corresponding config) | Joint | Unit         |
-  |-----|-----------------------------------------------|-------------|-------------|--------------------------------|-------|--------------|
-  | 0   | Rotation of the panning the shoulder          | -1          | 1           | shoulder_pan_joint             | hinge | torque (N m) |
-  | 1   | Rotation of the shoulder lifting joint        | -1          | 1           | shoulder_lift_joint            | hinge | torque (N m) |
-  | 2   | Rotation of the elbow joint                   | -1          | 1           | elbow_joint                    | hinge | torque (N m) |
-  | 3   | Rotation of wrist joint 1                     | -1          | 1           | wrist_1_joint                  | hinge | torque (N m) |
-  | 4   | Rotation of wrist joint 2                     | -1          | 1           | wrist_2_joint                  | hinge | torque (N m) |
-  | 5   | Rotation of wrist joint 3                     | -1          | 1           | wrist_2_joint                  | hinge | torque (N m) |
-  | 6   | Opening of the fingers                        | -1          | 1           | finger_joint                   | hinge | torque (N m) |
-
-  ### Observation Space
-
-  Observations consist of
-
-  - Angle of rotational joints on the pusher
-  - Angular velocities of rotational joints on the pusher
-  - The coordinates of the fingertip of the pusher
-  - The coordinates of the object to be picked
-  - The coordinates of the goal position
-
-  The observation is a `ndarray` with shape `(23,)` where the elements
-  correspond to the table below. An analogy can be drawn to a human arm in order
-  to help understand the state space, with the words flex and roll meaning the
-  same as human joints.
-
-  | Num | Observation                                              | Min  | Max | Name (in corresponding config) | Joint    | Unit                     |
-  |-----|----------------------------------------------------------|------|-----|--------------------------------|----------|--------------------------|
-  | 0   | Rotation of the panning the shoulder                     | -Inf | Inf | shoulder_pan_joint             | hinge    | angle (rad)              |
-  | 1   | Rotation of the shoulder lifting joint                   | -Inf | Inf | shoulder_lift_joint            | hinge    | angle (rad)              |
-  | 2   | Rotation of the shoulder rolling joint                   | -Inf | Inf | elbow_joint                    | hinge    | angle (rad)              |
-  | 3   | Rotation of hinge joint that flexed the elbow            | -Inf | Inf | wrist_1_joint                  | hinge    | angle (rad)              |
-  | 4   | Rotation of hinge that rolls the forearm                 | -Inf | Inf | wrist_2_joint                  | hinge    | angle (rad)              |
-  | 5   | Rotation of flexing the wrist                            | -Inf | Inf | wrist_3_joint                  | hinge    | angle (rad)              |
-  | 7   | Rotational velocity of the panning the shoulder          | -Inf | Inf | shoulder_pan_joint             | hinge    | angular velocity (rad/s) |
-  | 8   | Rotational velocity of the shoulder lifting joint        | -Inf | Inf | shoulder_lift_joint            | hinge    | angular velocity (rad/s) |
-  | 9   | Rotational velocity of the shoulder rolling joint        | -Inf | Inf | elbow_joint                    | hinge    | angular velocity (rad/s) |
-  | 10  | Rotational velocity of hinge joint that flexed the elbow | -Inf | Inf | wrist_1_joint                  | hinge    | angular velocity (rad/s) |
-  | 11  | Rotational velocity of hinge that rolls the forearm      | -Inf | Inf | wrist_2_joint                  | hinge    | angular velocity (rad/s) |
-  | 12  | Rotational velocity of flexing the wrist                 | -Inf | Inf | wrist_3_joint                  | hinge    | angular velocity (rad/s) |
-  | 14  | x-coordinate of the fingertip of the gripper             | -Inf | Inf | tips_arm                       | slide    | position (m)             |
-  | 15  | y-coordinate of the fingertip of the gripper             | -Inf | Inf | tips_arm                       | slide    | position (m)             |
-  | 16  | z-coordinate of the fingertip of the gripper             | -Inf | Inf | tips_arm                       | slide    | position (m)             |
-  | 17  | x-coordinate of the object to be moved                   | -Inf | Inf | object (obj_slidex)            | slide    | position (m)             |
-  | 18  | y-coordinate of the object to be moved                   | -Inf | Inf | object (obj_slidey)            | slide    | position (m)             |
-  | 19  | z-coordinate of the object to be moved                   | -Inf | Inf | object                         | cylinder | position (m)             |
-  | 20  | x-coordinate of the goal position of the object          | -Inf | Inf | goal (goal_slidex)             | slide    | position (m)             |
-  | 21  | y-coordinate of the goal position of the object          | -Inf | Inf | goal (goal_slidey)             | slide    | position (m)             |
-  | 22  | z-coordinate of the goal position of the object          | -Inf | Inf | goal                           | sphere   | position (m)             |
-
-
-  ### Rewards
-
-  The reward consists of two parts:
-
-  - *reward_near*: This reward is a measure of how far the *fingertip* of the
-  pusher (the unattached end) is from the object, with a more negative value
-  assigned for when the pusher's *fingertip* is further away from the target.
-  It is calculated as the negative vector norm of (position of the fingertip -
-  position of target), or *-norm("fingertip" - "target")*.
-  - *reward_dist*: This reward is a measure of how far the object is from the
-  target goal position, with a more negative value assigned for object is
-  further away from the target. It is calculated as the negative vector norm of
-  (position of the object - position of goal), or *-norm("object" - "target")*.
-  - *reward_control*: A negative reward for penalising the pusher if it takes
-  actions that are too large. It is measured as the negative squared Euclidean
-  norm of the action, i.e. as *- sum(action<sup>2</sup>)*.
-
-  Unlike other environments, Pusher does not allow you to specify weights for
-  the individual reward terms. However, `info` does contain the keys
-  *reward_dist* and *reward_ctrl*. Thus, if you'd like to weight the terms, you
-  should create a wrapper that computes the weighted reward from `info`.
-
-  ### Starting State
-
-  All pusher (not including object and goal) states start in (0.0, 0.0, 0.0,
-  0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0). A uniform noise in the
-  range [-0.005, 0.005] is added to the velocity attributes only. The velocities
-  of the object and goal are permanently set to 0. The object's x-position is
-  selected uniformly between [-0.3, 0] while the y-position is selected
-  uniformly between [-0.2, 0.2], and this process is repeated until the vector
-  norm between the object's (x,y) position and origin is not greater than 0.17.
-  The goal always have the same position of (0.45, -0.05, -0.323).
-
-  The default *dt = 0.05*.
-
-  ### Episode Termination
-
-  The episode terminates when any of the following happens:
-
-  1. The episode duration reaches a 1000 timesteps.
-  """
-  # pyformat: enable
-
-  def __init__(self, backend='generalized', **kwargs):
-    path = epath.resource_path('brax') / 'envs/assets/ur5.urdf'
-    sys = mjcf.load(path)
-
-    n_frames = 5
-    def get_all_link_names(urdf_file):
-      tree = ET.parse(urdf_file)
-      root = tree.getroot()
-
-      link_names = []
-      for link in root.iter('link'):
-        link_name = link.attrib.get('name')
-        if link_name:
-          link_names.append(link_name)
-      return link_names
-
-    if backend in ['spring', 'positional']:
-      sys = sys.replace(dt=0.001)
-      sys = sys.replace(
-          actuator=sys.actuator.replace(gear=jp.array([20.0] * sys.act_size()))
-      )
-      n_frames = 50
-
-    kwargs['n_frames'] = kwargs.get('n_frames', n_frames)
-
-    super().__init__(sys=sys, backend=backend, **kwargs)
-
-    # The tips_arm body gets fused with r_wrist_roll_link, so we use the parent
-    # r_wrist_flex_link for tips_arm_idx.
-    print("link names:", self.sys.link_names)
-    self._tips_arm_idx = get_all_link_names(path).index('robotiq_arg2f_base_link')
-    self._object_idx = get_all_link_names(path).index('object')
-    self._goal_idx = get_all_link_names(path).index('goal')
-    
-
-  def reset(self, rng: jp.ndarray) -> State:
-    qpos = self.sys.init_q
-
-    rng, rng1, rng2 = jax.random.split(rng, 3)
-
-    # randomly orient the object
-    cylinder_pos = jp.concatenate([
-        jax.random.uniform(rng, (1,), minval=-0.3, maxval=-1e-6),
-        jax.random.uniform(rng1, (1,), minval=-0.2, maxval=0.2),
-    ])
-    # constrain minimum distance of object to goal
-    goal_pos = jp.array([0.0, 0.0])
-    norm = math.safe_norm(cylinder_pos - goal_pos)
-    scale = jp.where(norm < 0.17, 0.17 / norm, 1.0)
-    cylinder_pos *= scale
-    qpos = qpos.at[-4:].set(jp.concatenate([cylinder_pos, goal_pos]))
-
-    qvel = jax.random.uniform(
-        rng2, (self.sys.qd_size(),), minval=-0.005, maxval=0.005
-    )
-    qvel = qvel.at[-4:].set(0.0)
-
-    pipeline_state = self.pipeline_init(qpos, qvel)
-
-    obs = self._get_obs(pipeline_state)
-    reward, done, zero = jp.zeros(3)
-    metrics = {'reward_dist': zero, 'reward_ctrl': zero, 'reward_near': zero}
-    return State(pipeline_state, obs, reward, done, metrics)
-
-  def step(self, state: State, action: jp.ndarray) -> State:
-    x_i = state.pipeline_state.x.vmap().do(
-        base.Transform.create(pos=self.sys.link.inertia.transform.pos)
-    )
-    vec_1 = x_i.pos[self._object_idx] - x_i.pos[self._tips_arm_idx]
-    vec_2 = x_i.pos[self._object_idx] - x_i.pos[self._goal_idx]
-
-    reward_near = -math.safe_norm(vec_1)
-    reward_dist = -math.safe_norm(vec_2)
-    reward_ctrl = -jp.square(action).sum()
-    reward = reward_dist + 0.1 * reward_ctrl + 0.5 * reward_near
-
-    pipeline_state = self.pipeline_step(state.pipeline_state, action)
-
-    obs = self._get_obs(pipeline_state)
     state.metrics.update(
-        reward_near=reward_near,
-        reward_dist=reward_dist,
-        reward_ctrl=reward_ctrl,
+        hits=target_hit,
+        weightedHits=weighted_hit,
+        movingToTarget=moving_to_target,
     )
-    return state.replace(pipeline_state=pipeline_state, obs=obs, reward=reward)
 
-  def _get_obs(self, pipeline_state: base.State) -> jp.ndarray:
-    """Observes pusher body position and velocities."""
-    x_i = pipeline_state.x.vmap().do(
-        base.Transform.create(pos=self.sys.link.inertia.transform.pos)
-    )
-    return jp.concatenate([
-        pipeline_state.q[:7],
-        pipeline_state.qd[:7],
-        x_i.pos[self._tips_arm_idx],
-        x_i.pos[self._object_idx],
-        x_i.pos[self._goal_idx],
+    # teleport any hit targets
+    rng, target = self._random_target(state.info['rng'])
+    target = jnp.where(target_hit, target, qp.pos[self.target_idx])
+    pos = jax.ops.index_update(qp.pos, jax.ops.index[self.target_idx], target)
+    qp = qp.replace(pos=pos)
+    state.info.update(rng=rng)
+    return state.replace(qp=qp, obs=obs, reward=reward)
+
+  def _get_obs(self, qp: brax.QP, info: brax.Info) -> jnp.ndarray:
+    """Egocentric observation of target and arm body."""
+    torso_fwd = math.rotate(jnp.array([1., 0., 0.]), qp.rot[self.torso_idx])
+    torso_up = math.rotate(jnp.array([0., 0., 1.]), qp.rot[self.torso_idx])
+
+    v_inv_rotate = jax.vmap(math.inv_rotate, in_axes=(0, None))
+
+    pos_local = qp.pos - qp.pos[self.torso_idx]
+    pos_local = v_inv_rotate(pos_local, qp.rot[self.torso_idx])
+    vel_local = v_inv_rotate(qp.vel, qp.rot[self.torso_idx])
+
+    target_local = pos_local[self.target_idx]
+    target_local_mag = jnp.reshape(jnp.linalg.norm(target_local), -1)
+    target_local_dir = target_local / (1e-6 + target_local_mag)
+
+    pos_local = jnp.reshape(pos_local, -1)
+    vel_local = jnp.reshape(vel_local, -1)
+
+    contact_mag = jnp.sum(jnp.square(info.contact.vel), axis=-1)
+    contacts = jnp.where(contact_mag > 0.00001, 1, 0)
+
+    return jnp.concatenate([
+        torso_fwd, torso_up, target_local_mag, target_local_dir, pos_local,
+        vel_local, contacts
     ])
 
+  def _random_target(self, rng: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """Returns a target location in a random circle slightly above xy plane."""
+    rng, rng1, rng2 = jax.random.split(rng, 3)
+    dist = self.target_radius + self.target_distance * jax.random.uniform(rng1)
+    ang = jnp.pi * 2. * jax.random.uniform(rng2)
+    target_x = dist * jnp.cos(ang)
+    target_y = dist * jnp.sin(ang)
+    target_z = .5
+    target = jnp.array([target_x, target_y, target_z]).transpose()
+    return rng, target
+
+
+_SYSTEM_CONFIG = """
+bodies {
+  name: "floor"
+  colliders {
+    plane {
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 1.0
+  frozen {
+    all: true
+  }
+}
+bodies {
+  name: "shoulder_link"
+  colliders {
+    position {
+      y: 0.06682991981506348
+    }
+    rotation {
+      x: 90.0
+    }
+    capsule {
+      radius: 0.05945208668708801
+      length: 0.13365983963012695
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 1.0
+}
+bodies {
+  name: "upper_arm_link"
+  colliders {
+    position {
+      z: 0.21287038922309875
+    }
+    rotation {
+    }
+    capsule {
+      radius: 0.05968618765473366
+      length: 0.5446449518203735
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 1.0
+}
+bodies {
+  name: "forearm_link"
+  colliders {
+    position {
+      z: 0.1851803958415985
+    }
+    rotation {
+    }
+    capsule {
+      radius: 0.05584339052438736
+      length: 0.48926496505737305
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 1.0
+}
+bodies {
+  name: "wrist_1_link"
+  colliders {
+    position {
+      y: 0.10467606782913208
+    }
+    rotation {
+      x: 90.0
+    }
+    capsule {
+      radius: 0.038744933903217316
+      length: 0.10467606782913208
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 1.0
+}
+bodies {
+  name: "wrist_2_link"
+  colliders {
+    position {
+      z: 0.052344050258398056
+    }
+    rotation {
+    }
+    capsule {
+      radius: 0.03879201412200928
+      length: 0.10468810051679611
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 1.0
+}
+bodies {
+  name: "wrist_3_link"
+  colliders {
+    position {
+      y: -0.04025782644748688
+    }
+    rotation {
+      x: 90.0
+    }
+    capsule {
+      radius: 0.01725015603005886
+      length: 0.08051565289497375
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 1.0
+}
+bodies {
+  name: "Target"
+  colliders {
+    sphere {
+      radius: 0.1
+    }
+  }
+  inertia {
+    x: 1.0
+    y: 1.0
+    z: 1.0
+  }
+  mass: 1.0
+  frozen {
+    all: true
+  }
+}
+joints {
+  name: "shoulder_pan_joint"
+  stiffness: 40000.0
+  parent: "floor"
+  child: "shoulder_link"
+  parent_offset {
+    z: 0.163
+  }
+  child_offset {
+  }
+  rotation {
+    y: -90.0
+  }
+  angular_damping: 50.0
+  angle_limit {
+    min: -360.0
+    max: 360.0
+  }
+}
+joints {
+  name: "shoulder_lift_joint"
+  stiffness: 40000.0
+  parent: "shoulder_link"
+  child: "upper_arm_link"
+  parent_offset {
+    y: 0.138
+  }
+  child_offset {
+  }
+  rotation {
+    z: 90.0
+  }
+  angular_damping: 50.0
+  angle_limit {
+    min: -360.0
+    max: 360.0
+  }
+}
+joints {
+  name: "elbow_joint"
+  stiffness: 40000.0
+  parent: "upper_arm_link"
+  child: "forearm_link"
+  parent_offset {
+    y: -0.13
+    z: 0.425
+  }
+  child_offset {
+  }
+  rotation {
+    z: 90.0
+  }
+  angular_damping: 50.0
+  angle_limit {
+    min: -360.0
+    max: 360.0
+  }
+}
+joints {
+  name: "wrist_1_joint"
+  stiffness: 40000.0
+  parent: "forearm_link"
+  child: "wrist_1_link"
+  parent_offset {
+    z: 0.3919999897480011
+  }
+  child_offset {
+  }
+  rotation {
+    z: 90.0
+  }
+  angular_damping: 50.0
+  angle_limit {
+    min: -360.0
+    max: 360.0
+  }
+}
+joints {
+  name: "wrist_2_joint"
+  stiffness: 40000.0
+  parent: "wrist_1_link"
+  child: "wrist_2_link"
+  parent_offset {
+    y: 0.12700000405311584
+  }
+  child_offset {
+  }
+  rotation {
+    y: -90.0
+  }
+  angular_damping: 50.0
+  angle_limit {
+    min: -360.0
+    max: 360.0
+  }
+}
+joints {
+  name: "wrist_3_joint"
+  stiffness: 40000.0
+  parent: "wrist_2_link"
+  child: "wrist_3_link"
+  parent_offset {
+    z: 0.1
+  }
+  child_offset {
+  }
+  rotation {
+    z: 90.0
+  }
+  angular_damping: 50.0
+  angle_limit {
+    min: -360.0
+    max: 360.0
+  }
+}
+actuators {
+  name: "shoulder_pan_joint"
+  joint: "shoulder_pan_joint"
+  strength: 100.0
+  torque {
+  }
+}
+actuators {
+  name: "shoulder_lift_joint"
+  joint: "shoulder_lift_joint"
+  strength: 100.0
+  torque {
+  }
+}
+actuators {
+  name: "elbow_joint"
+  joint: "elbow_joint"
+  strength: 100.0
+  torque {
+  }
+}
+actuators {
+  name: "wrist_1_joint"
+  joint: "wrist_1_joint"
+  strength: 100.0
+  torque {
+  }
+}
+actuators {
+  name: "wrist_2_joint"
+  joint: "wrist_2_joint"
+  strength: 100.0
+  torque {
+  }
+}
+actuators {
+  name: "wrist_3_joint"
+  joint: "wrist_3_joint"
+  strength: 100.0
+  torque {
+  }
+}
+friction: 0.6
+gravity {
+  z: -9.81
+}
+collide_include {}
+angular_damping: -0.05
+baumgarte_erp: 0.1
+dt: 0.02
+substeps: 8
+"""
