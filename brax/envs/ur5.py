@@ -24,13 +24,13 @@ See https://www.universal-robots.com/products/ur5-robot/ for more details.
 from typing import Tuple
 
 import brax
-from brax.envs import env
 from brax.physics import math
+from brax.envs.base import PipelineEnv, State
 import jax
 import jax.numpy as jnp
 
 
-class UR5(env.Env):
+class UR5(PipelineEnv):
   """Trains a UR5E robotic arm to touch a sequence of random targets."""
 
   def __init__(self, **kwargs):
