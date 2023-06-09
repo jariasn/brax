@@ -29,7 +29,7 @@ from brax.v1 import math
 from brax.v1.envs import env
 
 
-class Ur5e(env.Env):
+class UR5(env.Env):
   """Trains a UR5E robotic arm to touch a sequence of random targets."""
 
   def __init__(self, legacy_spring=False, **kwargs):
