@@ -29,6 +29,7 @@ from brax.envs import inverted_pendulum
 from brax.envs import pusher
 from brax.envs import reacher
 from brax.envs import walker2d
+from brax.envs import ur5
 from brax.envs.base import Env, PipelineEnv, State, Wrapper
 from brax.envs.wrappers import training
 
@@ -44,6 +45,7 @@ _envs = {
     'pusher': pusher.Pusher,
     'reacher': reacher.Reacher,
     'walker2d': walker2d.Walker2d,
+    'ur5': ur5.UR5,
 }
 
 
