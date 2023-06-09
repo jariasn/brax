@@ -30,7 +30,7 @@ import jax
 import jax.numpy as jnp
 
 
-class UR5(env.Env):
+class UR5(PipelineEnv):
   """Trains a UR5E robotic arm to touch a sequence of random targets."""
 
   def __init__(self, **kwargs):
