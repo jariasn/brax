@@ -23,10 +23,10 @@ See https://www.universal-robots.com/products/ur5-robot/ for more details.
 
 from typing import Tuple
 
-import brax.v1 as brax
-from brax.v1 import jumpy as jp
-from brax.v1 import math
-from brax.v1.envs import env
+import brax as brax
+from brax import jumpy as jp
+from brax import math
+from brax.envs import env
 
 
 class UR5(env.Env):
